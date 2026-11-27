@@ -1,0 +1,50 @@
+name: Style lint
+
+# Runs the style linter (docs/style-guide.md, section 4) on every pull request
+# and on every push to main. Three steps, all required:
+#   1. the linter's own unit tests;
+#   2. the negative probe: tests/fixtures/tics.md MUST be rejected with exit
+#      code 1. Any other code (0 = accepted, 2 = crash) fails the job, so a
+#      linter that silently stops detecting anything cannot pass;
+#   3. the linter itself on posts/ and articles/.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Negative probe (the fixture must be rejected)
+        run: |
+          set +e
+          python tools/lint_style.py tests/fixtures/tics.md
+          rc=$?
+          set -e
+          if [ "$rc" -ne 1 ]; then
+            echo "::error::the negative probe returned $rc instead of 1: the linter is not doing its job"
+            exit 1
+          fi
+          echo "Negative probe rejected, as expected."
+
+      - name: Lint posts and articles
+        run: python tools/lint_style.py posts articles
